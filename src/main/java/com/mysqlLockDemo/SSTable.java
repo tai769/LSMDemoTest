@@ -97,40 +97,39 @@ public class SSTable {
 
   /**
    * 查询键值 - 简化实现， 顺序搜索
-   */ 
-  public String get(String key){
-    //首先检查布隆过滤器
-    if(!bloomFilter.mightContain(key)){
+   */
+  public String get(String key) {
+    // 首先检查布隆过滤器
+    if (!bloomFilter.mightContain(key)) {
       return null;
     }
-    try(DataInputStream dis  = new DataInputStream(
-    new BufferedInputStream(new FileInputStream(filePath)))){
+    try (DataInputStream dis = new DataInputStream(
+        new BufferedInputStream(new FileInputStream(filePath)))) {
       int totalEntries = dis.readInt();
 
-      //顺序搜索所有条目
-      for(int i = 0; i < totalEntries; i++){
+      // 顺序搜索所有条目
+      for (int i = 0; i < totalEntries; i++) {
         String currentKey = dis.readUTF();
         boolean deleted = dis.readBoolean();
         String value = null;
-        if(!deleted){
+        if (!deleted) {
           value = dis.readUTF();
         }
         Long timeStamp = dis.readLong();
-        
 
-        if(currentKey.equals(key)){
+        if (currentKey.equals(key)) {
           return deleted ? null : value;
         }
 
-        //由于数据有序，如果当前键大于目标键， 则不存在
-        if(currentKey.compareTo(key) > 0){
+        // 由于数据有序，如果当前键大于目标键， 则不存在
+        if (currentKey.compareTo(key) > 0) {
           break;
         }
       }
-    }catch(IOException e){
+    } catch (IOException e) {
       e.printStackTrace();
     }
-    return null
+    return null;
   }
 
   /*

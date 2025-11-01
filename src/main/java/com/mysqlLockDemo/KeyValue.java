@@ -7,10 +7,7 @@ public class KeyValue implements Comparable<KeyValue> {
 
   private final long timestamp;
 
-  private final long deleted;
-
-  public KeyValue() {
-  }
+  private final boolean deleted;
 
   public String getKey() {
     return key;
@@ -24,7 +21,7 @@ public class KeyValue implements Comparable<KeyValue> {
     return timestamp;
   }
 
-  public long isDeleted() {
+  public boolean isDeleted() {
     return deleted;
   }
 
@@ -32,7 +29,7 @@ public class KeyValue implements Comparable<KeyValue> {
     this(key, value, System.currentTimeMillis(), false);
   }
 
-  public KeyValue(String key, String value, long timestamp, long deleted) {
+  public KeyValue(String key, String value, long timestamp, boolean deleted) {
     this.key = key;
     this.value = value;
     this.timestamp = timestamp;
@@ -40,7 +37,7 @@ public class KeyValue implements Comparable<KeyValue> {
   }
 
   public static KeyValue createTombstone(String key) {
-    return new KeyValue(key, null.System.currentTimeMillis(), true);
+    return new KeyValue(key, null,System.currentTimeMillis(), true);
 
   }
 

@@ -12,8 +12,7 @@ public class MemTable {
 
   private volatile int currentSize;
 
-  public MemTable() {
-  }
+
 
   public MemTable(ConcurrentSkipListMap<String, KeyValue> data, int maxSize, int currentSize) {
     this.data = new ConcurrentSkipListMap<>();
@@ -38,7 +37,7 @@ public class MemTable {
   }
 
   public String get(String key) {
-    KeyValue kv = data.get(Key);
+    KeyValue kv = data.get(key);
     if (kv == null || kv.isDeleted()) {
       return null;
     }

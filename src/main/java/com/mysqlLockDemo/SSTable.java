@@ -25,8 +25,6 @@ public class SSTable {
 
   private final long creationTime;
 
-  public SSTable() {
-  }
 
   public SSTable(String filePath, List<KeyValue> sortedData) throws IOException {
     this.filePath = filePath;
@@ -39,7 +37,7 @@ public class SSTable {
   /**
    * 从文件路径加载已存在的SSTable
    */
-  public SSTable(String filePath) {
+  public SSTable(String filePath) throws IOException {
     this.filePath = filePath;
     this.creationTime = Files.getLastModifiedTime(Paths.get(filePath)).toMillis();
     this.bloomFilter = new BloomFilter(1000, 0.01);

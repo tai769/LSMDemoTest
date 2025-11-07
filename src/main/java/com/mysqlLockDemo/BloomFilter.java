@@ -52,4 +52,14 @@ public class BloomFilter {
         filter.bitSet.or(restored);
         return filter;
     }
+
+    public boolean mightContain(String key){
+        for (int i = 0; i < hashFunctions; i++){
+            int hash = hash(key,i);
+            if (!bitSet.get(Math.abs(hash % size))){
+                return false;
+            }
+        }
+        return true;
+    }
 }

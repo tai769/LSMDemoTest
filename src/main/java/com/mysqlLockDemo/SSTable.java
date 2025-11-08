@@ -31,7 +31,7 @@ public class SSTable {
     this.bloomFilter = new BloomFilter(sortedData.size(), 0.01);
     this.creationTime = System.currentTimeMillis();
 
-    wireTofile(sortedData);
+    wireToFile(sortedData);
   }
 
   /**
@@ -70,7 +70,7 @@ public class SSTable {
   /*
    * 将排序数据写入文件
    */
-  private void wireTofile(List<KeyValue> sortedDate) throws IOException {
+  private void wireToFile(List<KeyValue> sortedDate) throws IOException {
     try (
         DataOutputStream dos = new DataOutputStream(
             new BufferedOutputStream(new FileOutputStream(filePath)))) {

@@ -35,8 +35,6 @@ public class CompactionStrategy {
                 return true;
             }
         }
-
-
         return false;
     }
 

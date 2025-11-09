@@ -41,7 +41,7 @@ public class CompactionStrategy {
     /*
      * 执行压缩操作
      */
-    public List<SSTable> compact(List<SSTable> ssTables) throws Exception {
+    public List<SSTable> compact(List<SSTable> ssTables) throws IOException {
         Map<Integer, List<SSTable>> levelMap = groupByLevel(ssTables);
         List<SSTable>  newTables = new ArrayList<>();
         for(Map.Entry<Integer,List<SSTable>> entry  : levelMap.entrySet()){

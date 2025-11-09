@@ -12,13 +12,12 @@ public class MemTable {
 
   private volatile int currentSize;
 
-
-
-  public MemTable(ConcurrentSkipListMap<String, KeyValue> data, int maxSize, int currentSize) {
+  public MemTable(int maxSize) {
     this.data = new ConcurrentSkipListMap<>();
     this.maxSize = maxSize;
-    this.currentSize = currentSize;
+    this.currentSize = 0;
   }
+
 
   public void put(String key, String value) {
     KeyValue kv = new KeyValue(key, value);

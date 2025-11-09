@@ -1,7 +1,9 @@
 package com.mysqlLockDemo;
 
+import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ExecutorService;
@@ -41,7 +43,7 @@ public class LSMTree implements  AutoCloseable{
         createDirectoryIfNotExists(dataDir);
 
         //初始化组件
-        this.activeMemTable = new MemTable(new ConcurrentSkipListMap<>(), memTableMaxSize, 0);
+        this.activeMemTable = new MemTable(memTableMaxSize);
         this.immutableMemTables = new ArrayList<>();
         this.ssTables = new ArrayList<>();
 
@@ -91,7 +93,7 @@ public class LSMTree implements  AutoCloseable{
     //删除键值对
     public void delete(String key) throws IOException {
         if (key == null){
-            throw new IllegalArgumentException("key cannot be null")
+            throw new IllegalArgumentException("key cannot be null");
         }
         lock.writeLock().lock();
         try {
@@ -112,7 +114,7 @@ public class LSMTree implements  AutoCloseable{
      */
     public String get(String key) {
         if (key == null){
-            throw new IllegalArgumentException("key cannot be null")
+            throw new IllegalArgumentException("key cannot be null");
         }
         lock.readLock().lock();
         try {
@@ -131,14 +133,210 @@ public class LSMTree implements  AutoCloseable{
 
             //3. 查询SSTable
             List<SSTable> sortedSSTables = new ArrayList<>(ssTables);
+            sortedSSTables.sort((a,b) -> Long.compare(b.getCreationTime(), a.getCreationTime()));
 
+            for(SSTable ssTable : sortedSSTables){
+                value = ssTable.get(key);
+                if (value != null){
+                    return value;
+                }
+            }
+            return null;
+        }finally {
+            lock.readLock().unlock();
         }
     }
 
+    /*
+     * 刷新MemTable到磁盘
+     */
+    private void flushMemTable() throws IOException {
+        if (activeMemTable.isEmpty()){
+            return;
+        }
+        //将活跃MemTable转换成不可变
+        immutableMemTables.add(activeMemTable);
+        activeMemTable = new MemTable(memTableMaxSize);
 
+        //同步刷盘
+        flushImmutableMemTable();
+    }
 
+    /**
+     * 刷新不可变MemTable到SSTable
+     * @throws Exception
+     */
+    private void flushImmutableMemTable() throws IOException {
+        if (immutableMemTables.isEmpty()){
+            return;
+        }
+        MemTable memTable = immutableMemTables.remove(0);
+        List<KeyValue> entries = memTable.getAllEntries();
+        if (!entries.isEmpty()){
+            //排序
+            entries.sort(KeyValue::compareTo);
+            //创建SSTable
+            String fileName = String.format("%s/ssTable_level0_%d.db",
+                    dataDir, System.currentTimeMillis());
+            SSTable newSSTable = new SSTable(fileName, entries);
+            ssTables.add(newSSTable);
+            //清理WAL
+            wal.checkpoint();
+        }
+    }
+
+    /**
+     * 启动后台压缩任务
+     */
+    private void startBackGroundCompaction(){
+        compactionExecutor.submit(() -> {
+            while (!Thread.currentThread().isInterrupted()){
+                try{
+                    Thread.sleep(30000);
+                    if (compactionStrategy.needsCompaction(ssTables)){
+                        performCompaction();
+                    }
+                }catch (InterruptedException e){
+                    Thread.currentThread().interrupt();
+                    break;
+                }catch (Exception e){
+                    e.printStackTrace();
+                }
+            }
+        });
+    }
+
+    /*
+     * 执行压缩
+     */
+    private void performCompaction() throws IOException {
+        lock.writeLock().lock();
+        try {
+            List<SSTable> newSSTables = compactionStrategy.compact(ssTables);
+            ssTables.clear();
+            ssTables.addAll(newSSTables);
+        }finally {
+            lock.writeLock().unlock();
+        }
+    }
+
+    /*
+     * 从WAL和SSTable恢复数据
+     */
+    private void recover() throws IOException {
+        //1. 恢复SSTable
+        File dir = new File(dataDir);
+        File[] files = dir.listFiles((d, name) -> name.endsWith(".db"));
+        if (files != null){
+            Arrays.sort(files, (a, b) -> Long.compare(a.lastModified(), b.lastModified()));
+
+            for (File file : files){
+                SSTable ssTable = new SSTable(file.getAbsolutePath());
+                ssTables.add(ssTable);
+            }
+        }
+        //2. 从WAL恢复未刷盘的数据
+        List<WriteAheadLog.LogEntry> entries = wal.recover();
+        for (WriteAheadLog.LogEntry entry : entries){
+            if (entry.getOperation() == WriteAheadLog.Operation.PUT){
+                activeMemTable.put(entry.getKey(), entry.getValue());
+            }else if (entry.getOperation() == WriteAheadLog.Operation.DELETE){
+                activeMemTable.delete(entry.getKey());
+            }
+        }
+    }
+
+    /*
+     * 强制刷盘
+     */
+    public void flush() throws IOException{
+        lock.writeLock().lock();
+        try {
+            //刷新活跃Memtable
+            if (!activeMemTable.isEmpty()){
+                flushMemTable();
+            }
+            //刷新所有剩余的不可变MemTable
+            while (!immutableMemTables.isEmpty()){
+                flushMemTable();
+            }
+        }finally {
+            lock.writeLock().unlock();
+        }
+    }
+
+    /**
+     * 关闭LSM树
+     */
     @Override
-    public void close() throws Exception {
+    public void close() throws IOException{
+        //刷盘所有内存数据
+        flush();
+
+        //关闭WAL
+        wal.close();
+
+        //立刻关闭线程池，不等待
+        compactionExecutor.shutdownNow();
+    }
+
+    /**
+     * 创建目录
+     */
+    private void createDirectoryIfNotExists(String path)throws IOException{
+        File dir = new File(path);
+        if (!dir.exists() && !dir.mkdirs()){
+            throw new IOException("Failed to create directory: " + path);
+        }
+    }
+
+    /**
+     * 获取统计信息
+     */
+    public LSMTreeStats getStats(){
+        return null;
+    }
+
+    /*
+     * LSM Tree
+     */
+    public static class LSMTreeStats{
+        private int activeMemTableSize;
+        private int immutableMemTableCount;
+        private int ssTableCount;
+
+        public LSMTreeStats(int activeMemTableSize, int immutableMemTableCount, int ssTableCount) {
+            this.activeMemTableSize = activeMemTableSize;
+            this.immutableMemTableCount = immutableMemTableCount;
+            this.ssTableCount = ssTableCount;
+        }
+
+        public int getActiveMemTableSize() {
+            return activeMemTableSize;
+        }
+
+        public int getImmutableMemTableCount() {
+            return immutableMemTableCount;
+        }
+
+        public int getSsTableCount() {
+            return ssTableCount;
+        }
+
+        @Override
+        public String toString() {
+            return String.format(
+                    "LSMTreeStats{activeMemTable = %d, " +
+                            "immutableMemTables = %d," +
+                            "ssTables = %d",
+                    activeMemTableSize,immutableMemTableCount,
+                    ssTableCount);}
 
     }
 }
+
+
+
+
+
+

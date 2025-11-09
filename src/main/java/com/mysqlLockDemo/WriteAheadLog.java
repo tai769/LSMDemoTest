@@ -71,7 +71,13 @@ public class WriteAheadLog {
         return entries;
     }
 
-
+    public void close() throws IOException{
+        synchronized (lock){
+            if (writer != null){
+                writer.close();
+            }
+        }
+    }
 
 
     /*
